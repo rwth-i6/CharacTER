@@ -26,7 +26,7 @@ def cer(hyp, ref):
 
         if diff <= 0:
             break
-    
+
     shift_cost = _shift_cost(hyp_words, hyp_backup)
     shifted_chars = list(" ".join(hyp_words))
     ref_chars = list(" ".join(ref_words))
@@ -41,6 +41,8 @@ word lists as well as the cached edit distance calculator are required. It will
 return the difference of edit distances between before and after shifting, and
 the shifted version of the hypothesis sentence.
 """
+
+
 def shifter(hyp_words, ref_words, ed_calc):
     pre_score = ed_calc(hyp_words)
     scores = []
@@ -48,8 +50,7 @@ def shifter(hyp_words, ref_words, ed_calc):
     # Changing the phrase order of the hypothesis sentence
     for hyp_start, ref_start, length in couple_discoverer(hyp_words, ref_words):
         shifted_words = hyp_words[:hyp_start] + hyp_words[hyp_start+length:]
-        shifted_words[ref_start:ref_start] =\
-                hyp_words[hyp_start:hyp_start+length]
+        shifted_words[ref_start:ref_start] = hyp_words[hyp_start:hyp_start+length]
         scores.append((pre_score - ed_calc(shifted_words), shifted_words))
 
     # The case that the phrase order has not to be changed
@@ -65,6 +66,8 @@ This function will find out the identical phrases in sentence_1 and sentence_2,
 and yield the corresponding begin positions in both sentences as well as the
 maximal phrase length. Both sentences are represented as word lists.
 """
+
+
 def couple_discoverer(sentence_1, sentence_2):
     # Applying the cartesian product to traversing both sentences
     for start_1, start_2 in \
@@ -74,14 +77,14 @@ def couple_discoverer(sentence_1, sentence_2):
         if start_1 == start_2:
             continue
 
-        # If identical words are found in different positions of two sentences 
+        # If identical words are found in different positions of two sentences
         if sentence_1[start_1] == sentence_2[start_2]:
             length = 1
- 
+
             # Go further to next positions of sentence_1 to learn longer phrase
             for step in range(1, len(sentence_1) - start_1):
                 end_1, end_2 = start_1 + step, start_2 + step
-                
+
                 # If the new detected phrase is also contained in sentence_2
                 if end_2 < len(sentence_2) and sentence_1[end_1] == sentence_2[end_2]:
                     length += 1
@@ -93,7 +96,7 @@ def couple_discoverer(sentence_1, sentence_2):
 
 # Identical to Levenshtein distance
 def edit_distance(sentence_1, sentence_2):
-    
+
     # Keep sentence_2 as the shorter sentence
     if len(sentence_1) < len(sentence_2):
         return edit_distance(sentence_2, sentence_1)
@@ -106,20 +109,20 @@ def edit_distance(sentence_1, sentence_2):
         return len(sentence_1)
 
     previous_row = range(len(sentence_2) + 1)
-    
+
     # Go through the first sentence
     for i, character_1 in enumerate(sentence_1):
         current_row = [i+1]
-        
+
         # Go through the second sentence and check the Levenshtein distance
         for j, character_2 in enumerate(sentence_2):
             insertions = previous_row[j + 1] + 1
-            deletions = current_row[j] + 1       
+            deletions = current_row[j] + 1
             substitutions = previous_row[j] + (character_1 != character_2)
             current_row.append(min(insertions, deletions, substitutions))
-        
+
         previous_row = current_row
-    
+
     return previous_row[-1]
 
 
@@ -128,22 +131,24 @@ Shift cost: the average word length of the shifted phrase
 shifted_words: list of words in the shifted hypothesis sequence
 original_words: list of words in the original hypothesis sequence
 """
+
+
 def _shift_cost(shifted_words, original_words):
     shift_cost = 0
     original_start = 0
-    
+
     # Go through all words in the shifted hypothesis sequence
     while original_start < len(shifted_words):
         avg_shifted_charaters = 0
         original_index = original_start
-        
+
         # Go through words with larger index in original hypothesis sequence
         for shift_start in range(original_start+1, len(shifted_words)):
 
             # Check whether there is word matching
             if original_words[original_start] == shifted_words[shift_start]:
                 length = 1
-                
+
                 """
                 Go on checking the following word pairs to find the longest
                 matched phrase pairs
@@ -151,7 +156,7 @@ def _shift_cost(shifted_words, original_words):
                 for pos in range(1, len(original_words) - original_index):
                     original_end, shift_end = \
                             original_index + pos, shift_start + pos
-                    
+
                     # Check the next word pair
                     if shift_end < len(shifted_words) and \
                             original_words[original_end] == \
@@ -187,6 +192,8 @@ Function to calculate the number of edits (The same as TER):
 2. Greedy search to find the shift which most reduces minimum edit distance
 Python code copyright (c) 2011 Hiroyuki Tanaka
 """
+
+
 class CachedEditDistance(object):
 
     def __init__(self, rwords):
@@ -197,8 +204,8 @@ class CachedEditDistance(object):
     def __call__(self, iwords):
         start_position, cached_score = self._find_cache(iwords)
         score, newly_created_matrix = \
-                self._edit_distance(iwords, start_position, cached_score)
-        self._add_cache(iwords, newly_created_matrix)  
+            self._edit_distance(iwords, start_position, cached_score)
+        self._add_cache(iwords, newly_created_matrix)
         return score
 
     def _edit_distance(self, iwords, spos, cache):
@@ -208,20 +215,20 @@ class CachedEditDistance(object):
         else:
             cache = [cache]
 
-        l = cache + [list(self.list_for_copy) \
-                for _ in range(len(iwords) - spos)]
+        l = cache + [list(self.list_for_copy)
+                     for _ in range(len(iwords) - spos)]
         assert len(l) - 1 == len(iwords) - spos
 
-        for i, j in itertools.product(range(1, len(iwords) - spos + 1), \
-                range(len(self.rwds) + 1)):
+        for i, j in itertools.product(range(1, len(iwords) - spos + 1),
+                                      range(len(self.rwds) + 1)):
 
             if j == 0:
                 l[i][j] = l[i - 1][j] + 1
             else:
                 l[i][j] = min(l[i - 1][j] + 1,
                               l[i][j - 1] + 1,
-                              l[i - 1][j - 1] + (0 if iwords[spos + i - 1] == \
-                                      self.rwds[j - 1] else 1))
+                              l[i - 1][j - 1] + (0 if iwords[spos + i - 1] ==
+                                                 self.rwds[j - 1] else 1))
 
         return l[-1][-1], l[1:]
 
@@ -231,9 +238,9 @@ class CachedEditDistance(object):
 
         for i in range(skipnum):
             node = node[iwords[i]][0]
-            
+
         assert len(iwords[skipnum:]) == len(mat)
-        
+
         for word, row in itertools.izip(iwords[skipnum:], mat):
 
             if word not in node:
@@ -254,7 +261,7 @@ class CachedEditDistance(object):
 
             if word in node:
                 start_position = idx + 1
-                node, row = node[word] 
+                node, row = node[word]
             else:
                 break
 
@@ -263,11 +270,11 @@ class CachedEditDistance(object):
 
 # Parsing arguments
 def parse_args():
-    import argparse             
+    import argparse
     parser = argparse.ArgumentParser(
         description='CharacTER: Character Level Translation Edit Rate',
-        epilog="Please apply 'PYTHONIOENCODING' in environment variables, " \
-                "if UnicodeEncodeError occurs."
+        epilog="Please apply 'PYTHONIOENCODING' in environment variables, "
+               "if UnicodeEncodeError occurs."
         )
     parser.add_argument('-r', '--ref', help='Reference file', required=True)
     parser.add_argument('-o', '--hyp', help='Hypothesis file', required=True)
@@ -277,19 +284,19 @@ def parse_args():
 
 
 def main():
-    args = parse_args()    
+    args = parse_args()
     hyp_lines = [x for x in codecs.open(args.hyp, 'r', 'utf-8').readlines()]
     ref_lines = [x for x in codecs.open(args.ref, 'r', 'utf-8').readlines()]
-    
+
     """
     Check whether the hypothesis and reference files have the same number of
     sentences
     """
     if len(hyp_lines) != len(ref_lines):
-        print("Error! {0} lines in the hypothesis file, but {1} lines in the" \
-                " reference file.".format(len(hyp_lines), len(ref_lines)))
+        print("Error! {0} lines in the hypothesis file, but {1} lines in the"
+              " reference file.".format(len(hyp_lines), len(ref_lines)))
         sys.exit(1)
-    
+
     scores = []
 
     # Split the hypothesis and reference sentences into word lists
@@ -298,7 +305,7 @@ def main():
         ref, hyp = ref.split(), hyp.split()
         score = cer(hyp, ref)
         scores.append(score)
-    
+
         # Print out scores of every sentence
         if args.verbose:
             print("CharacTER of sentence {0} is {1:.4f}".format(index, score))
