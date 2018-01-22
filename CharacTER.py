@@ -34,11 +34,13 @@ def cer(hyp, ref):
     the reference sentence is minimized
     """
     while True:
-        (diff, hyp_words) = shifter(hyp_words, ref_words, ed_calc)
+        diff, new_words = shifter(hyp_words, ref_words, ed_calc)
 
         if diff <= 0:
             break
 
+        hyp_words = new_words
+    
     shift_cost = _shift_cost(hyp_words, hyp_backup)
     shifted_chars = list(" ".join(hyp_words))
     ref_chars = list(" ".join(ref_words))
@@ -154,6 +156,11 @@ def _shift_cost(shifted_words, original_words):
         avg_shifted_charaters = 0
         original_index = original_start
 
+        # Avoid costs created by unnecessary shifts
+        if original_words[original_start] == shifted_words[original_start]:
+            original_start += 1
+            continue
+
         # Go through words with larger index in original hypothesis sequence
         for shift_start in range(original_start+1, len(shifted_words)):
 
@@ -194,7 +201,7 @@ def _shift_cost(shifted_words, original_words):
 
         shift_cost += avg_shifted_charaters
         original_start += 1
-
+    
     return shift_cost
 
 
