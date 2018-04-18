@@ -21,6 +21,7 @@ import codecs
 import sys
 import itertools
 import math
+import time
 
 
 # Character error rate calculator, both hyp and ref are word lists
@@ -43,7 +44,11 @@ def cer(hyp, ref):
     shifted_chars = list(" ".join(hyp_words))
     ref_chars = list(" ".join(ref_words))
     edit_cost = edit_distance(shifted_chars, ref_chars) + shift_cost
-    return edit_cost / len(shifted_chars)
+
+    if len(shifted_chars) == 0:
+        return 1.0
+    else:
+        return edit_cost / len(shifted_chars)
 
 
 """
@@ -329,4 +334,8 @@ def main():
 
 
 if __name__ == '__main__':
+#    start_time = time.time()
     main()
+#    end_time = time.time()
+#    print(int(start_time))
+#    print(int(end_time))
