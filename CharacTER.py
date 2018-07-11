@@ -22,6 +22,7 @@ import sys
 import itertools
 import math
 import time
+import Levenshtein
 
 
 # Character error rate calculator, both hyp and ref are word lists
@@ -43,13 +44,13 @@ def cer(hyp, ref):
         hyp_words = new_words
     
     shift_cost = _shift_cost(hyp_words, hyp_backup)
-    shifted_chars = list(" ".join(hyp_words))
-    ref_chars = list(" ".join(ref_words))
-    edit_cost = edit_distance(shifted_chars, ref_chars) + shift_cost
+    shifted_chars = " ".join(hyp_words)
+    ref_chars = " ".join(ref_words)
 
     if len(shifted_chars) == 0:
         return 1.0
     else:
+        edit_cost = Levenshtein.distance(shifted_chars, ref_chars) + shift_cost
         return edit_cost / len(shifted_chars)
 
 
@@ -333,7 +334,6 @@ def main():
         # Print out scores of every sentence
         if args.verbose:
             print("CharacTER of sentence {0} is {1:.4f}".format(index, score))
-
     average = sum(scores) / len(scores)
     variance = sum((s - average) ** 2 for s in scores) / len(scores)
     standard_deviation = math.sqrt(variance)
@@ -341,8 +341,8 @@ def main():
 
 
 if __name__ == '__main__':
-#    start_time = time.time()
+    #start_time = time.time()
     main()
-#    end_time = time.time()
-#    print(int(start_time))
-#    print(int(end_time))
+    #end_time = time.time()
+    #print(end_time-start_time)
+    
