@@ -51,7 +51,8 @@ def cer(hyp, ref):
         return 1.0
     else:
         edit_cost = Levenshtein.distance(shifted_chars, ref_chars) + shift_cost
-        return edit_cost / len(shifted_chars)
+        cer = min(1.0, edit_cost / len(shifted_chars))
+        return cer
 
 
 """
