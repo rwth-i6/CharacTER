@@ -23,6 +23,10 @@ import itertools
 import math
 import time
 import Levenshtein
+try:
+    from itertools import izip as zip
+except ImportError:
+    pass
 
 
 # Character error rate calculator, both hyp and ref are word lists
@@ -76,7 +80,7 @@ def shifter(hyp_words, ref_words, ed_calc):
 
     # The case that the phrase order has not to be changed
     if not scores:
-        return (0, hyp_words)
+        return 0, hyp_words
 
     scores.sort()
     return scores[-1]
@@ -267,7 +271,7 @@ class CachedEditDistance(object):
 
         assert len(iwords[skipnum:]) == len(mat)
 
-        for word, row in itertools.izip(iwords[skipnum:], mat):
+        for word, row in zip(iwords[skipnum:], mat):
 
             if word not in node:
                 node[word] = [{}, None]
@@ -327,7 +331,7 @@ def main():
 
     # Split the hypothesis and reference sentences into word lists
     for index, (hyp, ref) in \
-            enumerate(itertools.izip(hyp_lines, ref_lines), start=1):
+            enumerate(zip(hyp_lines, ref_lines), start=1):
         ref, hyp = ref.split(), hyp.split()
         score = cer(hyp, ref)
         scores.append(score)
@@ -342,8 +346,8 @@ def main():
 
 
 if __name__ == '__main__':
-    #start_time = time.time()
+    # start_time = time.time()
     main()
-    #end_time = time.time()
-    #print(end_time-start_time)
+    # end_time = time.time()
+    # print(end_time-start_time)
     
