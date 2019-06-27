@@ -8,6 +8,8 @@ Paper can be found under ./WMT2016_CharacTer.pdf
 
 Implementations in CharacTER.py
 
+You may have to install the python package "python-Levenshtein" first.
+
 usage: CharacTER.py [-h] -r REF -o HYP [-v]
 
 CharacTER: Character Level Translation Edit Rate
