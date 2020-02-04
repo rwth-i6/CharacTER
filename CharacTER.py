@@ -1,9 +1,9 @@
-#! /usr/bin/env python2
+#! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 
 """
 This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software 
+the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version.
 
@@ -15,13 +15,12 @@ You should have received a copy of the GNU General Public License along with
 this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from __future__ import division, print_function
-import re
-import codecs
+# from math import sqrt #needed for aditional statistics
+import os
 import sys
+import ctypes
+import argparse
 import itertools
-import math
-import time
 import Levenshtein
 try:
     from itertools import izip as zip
@@ -29,34 +28,74 @@ except ImportError:
     pass
 
 
-# Character error rate calculator, both hyp and ref are word lists
-def cer(hyp, ref):
-    hyp_words, ref_words = list(hyp), list(ref)
-    ed_calc = CachedEditDistance(ref_words)
-    hyp_backup = hyp_words
+"""
+Class which allows a more efficient way of computing the edit distance on a changing hypothesis.
+Stores the C++ wrapper for the actual edit distance computation in self.ed_wrapper.
+The reference is stored and converted to a sequence of integers on initialisation in self.ref via _word_to_num().
+Since the hypothesis changes after each shift it is added on call __call__().
+"""
+class EditDistance():
+    def __init__(self, ref, ed):
+        self.dic = {}
+        self.i = 0
+        self.ed_wrapper = ed
+        self.ref = self._word_to_num(ref)
 
+    def __call__(self, hyp):
+        return self._edit_distance(hyp)
+
+    # Calls the C++ implementation of the edit distance
+    def _edit_distance(self, hyp):
+        hyp_c = (ctypes.c_ulonglong * len(hyp))()
+        ref_c = (ctypes.c_ulonglong * len(self.ref))()
+        hyp_c[:] = self._word_to_num(hyp)
+        ref_c[:] = self.ref
+        norm = len(ref_c)
+        result = self.ed_wrapper.wrapper(hyp_c, ref_c, len(hyp_c), len(ref_c), norm)
+        return result
+
+    # Converts a sequence of words into a sequence of numbers.
+    # Each (unique) word is allocated a unique integer.
+    def _word_to_num(self, words):
+        res = []
+        for word in words:
+            if word in self.dic:
+                res.append(self.dic[word])
+            else:
+                self.dic[word] = self.i
+                res.append(self.dic[word])
+                self.i = self.i + 1
+        return res
+
+
+# Character error rate calculator, both hyp and ref are word lists
+def cer(hyp_words, ref_words, ed_wrapper):
+    hyp_backup = hyp_words
+    edit_distance = EditDistance(ref_words, ed_wrapper)
+    pre_score = edit_distance(hyp_words)
+    if pre_score == 0:
+        return 0
     """
     Shifting phrases of the hypothesis sentence until the edit distance from
     the reference sentence is minimized
     """
     while True:
-        diff, new_words = shifter(hyp_words, ref_words, ed_calc)
-
+        diff, new_words = shifter(hyp_words, ref_words, pre_score, edit_distance)
         if diff <= 0:
             break
 
         hyp_words = new_words
-    
+        pre_score = pre_score - diff
+
     shift_cost = _shift_cost(hyp_words, hyp_backup)
     shifted_chars = " ".join(hyp_words)
     ref_chars = " ".join(ref_words)
 
     if len(shifted_chars) == 0:
         return 1.0
-    else:
-        edit_cost = Levenshtein.distance(shifted_chars, ref_chars) + shift_cost
-        cer = min(1.0, edit_cost / len(shifted_chars))
-        return cer
+
+    edit_cost = Levenshtein.distance(shifted_chars, ref_chars) + shift_cost
+    return min(1.0, edit_cost / len(shifted_chars))
 
 
 """
@@ -66,18 +105,14 @@ word lists as well as the cached edit distance calculator are required. It will
 return the difference of edit distances between before and after shifting, and
 the shifted version of the hypothesis sentence.
 """
+def shifter(hyp_words, ref_words, pre_score, edit_distance):
 
-
-def shifter(hyp_words, ref_words, ed_calc):
-    pre_score = ed_calc(hyp_words)
     scores = []
-
     # Changing the phrase order of the hypothesis sentence
     for hyp_start, ref_start, length in couple_discoverer(hyp_words, ref_words):
         shifted_words = hyp_words[:hyp_start] + hyp_words[hyp_start+length:]
         shifted_words[ref_start:ref_start] = hyp_words[hyp_start:hyp_start+length]
-        scores.append((pre_score - ed_calc(shifted_words), shifted_words))
-
+        scores.append((pre_score - edit_distance(shifted_words), shifted_words))
     # The case that the phrase order has not to be changed
     if not scores:
         return 0, hyp_words
@@ -91,8 +126,6 @@ This function will find out the identical phrases in sentence_1 and sentence_2,
 and yield the corresponding begin positions in both sentences as well as the
 maximal phrase length. Both sentences are represented as word lists.
 """
-
-
 def couple_discoverer(sentence_1, sentence_2):
     # Applying the cartesian product to traversing both sentences
     for start_1, start_2 in \
@@ -119,45 +152,11 @@ def couple_discoverer(sentence_1, sentence_2):
             yield (start_1, start_2, length)
 
 
-# Identical to Levenshtein distance
-def edit_distance(sentence_1, sentence_2):
-
-    # Keep sentence_2 as the shorter sentence
-    if len(sentence_1) < len(sentence_2):
-        return edit_distance(sentence_2, sentence_1)
-
-    """
-    If one sentence does not contain any words, the edit distance should be the
-    length of the other sentence
-    """
-    if len(sentence_2) == 0:
-        return len(sentence_1)
-
-    previous_row = range(len(sentence_2) + 1)
-
-    # Go through the first sentence
-    for i, character_1 in enumerate(sentence_1):
-        current_row = [i+1]
-
-        # Go through the second sentence and check the Levenshtein distance
-        for j, character_2 in enumerate(sentence_2):
-            insertions = previous_row[j + 1] + 1
-            deletions = current_row[j] + 1
-            substitutions = previous_row[j] + (character_1 != character_2)
-            current_row.append(min(insertions, deletions, substitutions))
-
-        previous_row = current_row
-
-    return previous_row[-1]
-
-
 """
 Shift cost: the average word length of the shifted phrase
 shifted_words: list of words in the shifted hypothesis sequence
 original_words: list of words in the original hypothesis sequence
 """
-
-
 def _shift_cost(shifted_words, original_words):
     shift_cost = 0
     original_start = 0
@@ -212,95 +211,12 @@ def _shift_cost(shifted_words, original_words):
 
         shift_cost += avg_shifted_charaters
         original_start += 1
-    
+
     return shift_cost
-
-
-"""
-Function to calculate the number of edits (The same as TER):
-1. Dynamic programming for calcualting edit distance
-2. Greedy search to find the shift which most reduces minimum edit distance
-Python code copyright (c) 2011 Hiroyuki Tanaka
-"""
-
-
-class CachedEditDistance(object):
-
-    def __init__(self, rwords):
-        self.rwds = rwords
-        self._cache = {}
-        self.list_for_copy = [0 for _ in range(len(self.rwds) + 1)]
-
-    def __call__(self, iwords):
-        start_position, cached_score = self._find_cache(iwords)
-        score, newly_created_matrix = \
-            self._edit_distance(iwords, start_position, cached_score)
-        self._add_cache(iwords, newly_created_matrix)
-        return score
-
-    def _edit_distance(self, iwords, spos, cache):
-
-        if cache is None:
-            cache = [tuple(range(len(self.rwds) + 1))]
-        else:
-            cache = [cache]
-
-        l = cache + [list(self.list_for_copy)
-                     for _ in range(len(iwords) - spos)]
-        assert len(l) - 1 == len(iwords) - spos
-
-        for i, j in itertools.product(range(1, len(iwords) - spos + 1),
-                                      range(len(self.rwds) + 1)):
-
-            if j == 0:
-                l[i][j] = l[i - 1][j] + 1
-            else:
-                l[i][j] = min(l[i - 1][j] + 1,
-                              l[i][j - 1] + 1,
-                              l[i - 1][j - 1] + (0 if iwords[spos + i - 1] ==
-                                                 self.rwds[j - 1] else 1))
-
-        return l[-1][-1], l[1:]
-
-    def _add_cache(self, iwords, mat):
-        node = self._cache
-        skipnum = len(iwords) - len(mat)
-
-        for i in range(skipnum):
-            node = node[iwords[i]][0]
-
-        assert len(iwords[skipnum:]) == len(mat)
-
-        for word, row in zip(iwords[skipnum:], mat):
-
-            if word not in node:
-                node[word] = [{}, None]
-
-            value = node[word]
-
-            if value[1] is None:
-                value[1] = tuple(row)
-
-            node = value[0]
-
-    def _find_cache(self, iwords):
-        node = self._cache
-        start_position, row = 0, None
-
-        for idx, word in enumerate(iwords):
-
-            if word in node:
-                start_position = idx + 1
-                node, row = node[word]
-            else:
-                break
-
-        return start_position, row
 
 
 # Parsing arguments
 def parse_args():
-    import argparse
     parser = argparse.ArgumentParser(
         description='CharacTER: Character Level Translation Edit Rate',
         epilog="Please apply 'PYTHONIOENCODING' in environment variables, "
@@ -315,9 +231,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    hyp_lines = [x for x in codecs.open(args.hyp, 'r', 'utf-8').readlines()]
-    ref_lines = [x for x in codecs.open(args.ref, 'r', 'utf-8').readlines()]
-
+    hyp_lines = [x for x in open(args.hyp, 'r')]
+    ref_lines = [x for x in open(args.ref, 'r')]
     """
     Check whether the hypothesis and reference files have the same number of
     sentences
@@ -327,27 +242,27 @@ def main():
               " reference file.".format(len(hyp_lines), len(ref_lines)))
         sys.exit(1)
 
+    # Initialise the connection to C++
+    ed_wrapper = ctypes.CDLL(os.path.dirname(os.path.abspath(__file__)) + '/libED.so')
+    ed_wrapper.wrapper.restype = ctypes.c_float
+
     scores = []
 
     # Split the hypothesis and reference sentences into word lists
-    for index, (hyp, ref) in \
-            enumerate(zip(hyp_lines, ref_lines), start=1):
+    for index, (hyp, ref) in enumerate(zip(hyp_lines, ref_lines), start=1):
         ref, hyp = ref.split(), hyp.split()
-        score = cer(hyp, ref)
+        score = cer(hyp, ref, ed_wrapper)
         scores.append(score)
-
         # Print out scores of every sentence
         if args.verbose:
             print("CharacTER of sentence {0} is {1:.4f}".format(index, score))
     average = sum(scores) / len(scores)
-    variance = sum((s - average) ** 2 for s in scores) / len(scores)
-    standard_deviation = math.sqrt(variance)
+    # variance = sum((s - average) ** 2 for s in scores) / len(scores)
+    # standard_deviation = sqrt(variance)
     print(average)
 
 
 if __name__ == '__main__':
-    # start_time = time.time()
     main()
-    # end_time = time.time()
-    # print(end_time-start_time)
-    
+    sys.exit(0)
+
